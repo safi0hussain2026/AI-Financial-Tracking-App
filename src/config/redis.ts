@@ -7,7 +7,6 @@ if (!process.env.REDIS_URL) {
 export const redis = new Redis(process.env.REDIS_URL, {
   maxRetriesPerRequest: null,
 });
-
 // const redis = new Redis({
 //   host: process.env.REDIS_HOST,
 //   port: parseInt(process.env.REDIS_PORT || "6379"),
