@@ -2,7 +2,7 @@ import cron from "node-cron";
 import { processBudgetReminderService } from "../services/budget-reminder.service";
 
 export const startBudgetReminderCron = () => {
-  // Morning 9 AM
+  // AfterNoon 12:30 PM
   cron.schedule(
     "45 12 * * *",
     async () => {
