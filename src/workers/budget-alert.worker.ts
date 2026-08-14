@@ -73,45 +73,94 @@ const sendBudgetAlertPushNotification = async (alert: any) => {
 };
 
 // ------------------------------------
-// Budget Alert Worker
+// Budget Alert Job Processor
+// (extracted so it's reused by the on-demand worker below)
 // ------------------------------------
 
-const worker = new Worker(
-  "budget-alert-queue",
+const processBudgetAlertJob = async (job: any) => {
+  if (job.name !== "budget-alert-job") {
+    return;
+  }
 
-  async (job) => {
-    if (job.name !== "budget-alert-job") {
-      return;
-    }
+  const { alertId } = job.data;
 
-    const { alertId } = job.data;
+  const alert = await budgetAlertRepository.findById(alertId);
 
-    const alert = await budgetAlertRepository.findById(alertId);
+  if (!alert) {
+    return;
+  }
 
-    if (!alert) {
-      return;
-    }
-    // Send Push Notification
-    await sendBudgetAlertPushNotification(alert);
+  // Send Push Notification
+  await sendBudgetAlertPushNotification(alert);
 
-    // Send Email
-    await sendBudgetAlertEmail(alert);
-  },
+  // Send Email
+  await sendBudgetAlertEmail(alert);
+};
 
-  {
+// ------------------------------------
+// On-Demand Budget Alert Worker
+//
+// Instead of running 24/7 (which polls Redis constantly and burns
+// through Upstash's request quota even when idle), this worker is
+// created only when a job is added to the queue, and automatically
+// closes itself after IDLE_TIMEOUT_MS of inactivity.
+//
+// Call `ensureBudgetAlertWorkerRunning()` immediately after every
+// `budgetAlertQueue.add(...)` call, from anywhere in the app
+// (cron job, expense-increase handler, etc).
+// ------------------------------------
+
+const IDLE_TIMEOUT_MS = 30_000; // close worker after 30s of no activity
+
+let worker: Worker | null = null;
+let idleTimer: NodeJS.Timeout | null = null;
+
+const closeWorker = async () => {
+  if (worker) {
+    await worker.close();
+    worker = null;
+    console.log("Budget alert worker closed (idle)");
+  }
+};
+
+const resetIdleTimer = () => {
+  if (idleTimer) {
+    clearTimeout(idleTimer);
+  }
+  idleTimer = setTimeout(closeWorker, IDLE_TIMEOUT_MS);
+};
+
+export const ensureBudgetAlertWorkerRunning = () => {
+  if (worker) {
+    // Already running — just push the idle timer forward
+    resetIdleTimer();
+    return;
+  }
+
+  worker = new Worker("budget-alert-queue", processBudgetAlertJob, {
     connection: redis,
-  },
-);
+  });
+
+  worker.on("completed", (job) => {
+    console.log(`Budget alert job completed: ${job.id}`);
+    resetIdleTimer();
+  });
+
+  worker.on("failed", (job, error) => {
+    console.error(`Budget alert job failed: ${job?.id}`);
+    console.error(error);
+    resetIdleTimer();
+  });
+
+  console.log("Budget alert worker started");
+  resetIdleTimer();
+};
 
 // ------------------------------------
-// Worker Events
+// Graceful shutdown (optional but recommended)
 // ------------------------------------
 
-worker.on("completed", (job) => {
-  console.log(`Budget alert job completed: ${job.id}`);
-});
-
-worker.on("failed", (job, error) => {
-  console.error(`Budget alert job failed: ${job?.id}`);
-  console.error(error);
+process.on("SIGTERM", async () => {
+  if (idleTimer) clearTimeout(idleTimer);
+  await closeWorker();
 });

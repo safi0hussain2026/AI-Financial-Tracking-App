@@ -1,5 +1,6 @@
 import { BudgetAlertType } from "../../generated/prisma/enums";
 import { budgetAlertQueue } from "../../queues/budget-alert.queue";
+import { ensureBudgetAlertWorkerRunning } from "../../workers/budget-alert.worker";
 import { BudgetAlertRepository } from "./budgetAlert.repository";
 
 const budgetAlertRepository = new BudgetAlertRepository();
@@ -49,5 +50,6 @@ export const checkBudgetAlert = async (userId: string, categoryId: string) => {
     },
     { attempts: 3, backoff: { type: "exponential", delay: 5000 } },
   );
+  ensureBudgetAlertWorkerRunning();
   return alert;
 };

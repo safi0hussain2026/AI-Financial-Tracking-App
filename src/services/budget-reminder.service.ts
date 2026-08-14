@@ -2,6 +2,7 @@ import { BudgetAlertType } from "../generated/prisma/enums";
 import { getBudgetsNeedingReminderService } from "../modules/budget/budget.service";
 import { BudgetAlertRepository } from "../modules/budgetAlert/budgetAlert.repository";
 import { budgetAlertQueue } from "../queues/budget-alert.queue";
+import { ensureBudgetAlertWorkerRunning } from "../workers/budget-alert.worker";
 
 const budgetAlertRepository = new BudgetAlertRepository();
 
@@ -48,5 +49,6 @@ export const processBudgetReminderService = async () => {
       },
       { attempts: 3, backoff: { type: "exponential", delay: 5000 } },
     );
+    ensureBudgetAlertWorkerRunning();
   }
 };
