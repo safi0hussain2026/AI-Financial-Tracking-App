@@ -4,7 +4,7 @@ import { processBudgetReminderService } from "../services/budget-reminder.servic
 export const startBudgetReminderCron = () => {
   // Morning 9 AM
   cron.schedule(
-    "30 12 * * *",
+    "45 12 * * *",
     async () => {
       await processBudgetReminderService();
     },
